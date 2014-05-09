@@ -1,8 +1,9 @@
 kernel.add('jscc', function() {
-  return function(grammar, start) {
+  return function(grammar, start, tokens) {
     // TODO: check for misplaced epsilons, missing start symbol, collision with augmented start symbol, etc.
     // TODO: raise errors when terminals are prefixes of one another
     
+    if (!tokens) tokens = {};
     grammar[start+"'"] = [[[start], function(e) { return e; }]];
     start = start+"'";
     
@@ -106,7 +107,7 @@ kernel.add('jscc', function() {
         Object.keys(transitions).forEach(function(symbol) {
           if (!grammar.hasOwnProperty(symbol)) return;
           grammar[symbol].forEach(function(production) {
-            if (!state.some(function(i) { return i[1] == production[0]; })) {
+            if (!state.some(function(i) { return i[1] == production[0] && !i[2]; })) {
               var next = production[0][0];
               if (!next) return;
               state.push([symbol, production[0], 0, production[1]]);
@@ -167,43 +168,72 @@ kernel.add('jscc', function() {
       item.state.forEach(function(i) {
         var next = i[1][i[2]];
         if (next) {
-          if (item.reductions.hasOwnProperty(next)) throw 'shift-reduce conflict in production '+production(i);
+          if (item.reductions.hasOwnProperty(next)) throw 'shift-reduce conflict between productions on input "'+next+'"\n  '+production(i)+' (shift)\n  '+production(item.transitions[next])+' (reduce)';
         } else {
           Object.keys(follows[i[0]]).forEach(function(next) {
-            if (item.transitions.hasOwnProperty(next)) throw 'shift-reduce conflict in production '+production(i)+' on input "'+next+'"';
-            if (item.reductions.hasOwnProperty(next)) throw 'reduce-reduct conflict in production '+production(i)+' on input "'+next+'"';
+            if (item.transitions.hasOwnProperty(next)) throw 'shift-reduce conflict between productions on input "'+next+'"\n  '+production(item.transitions[next])+' (shift)\n  '+production(i)+' (reduce)';
+            if (item.reductions.hasOwnProperty(next)) throw 'reduce-reduce conflict between productions on input "'+next+'"\n  '+production(item.reductions[next])+'\n  '+production(i);
             item.reductions[next] = i;
           });
         }
       });
     });
     
-    return function(program) {
-      var tree = [], stack = [], state = items[0], i = 0;
+    return function(string) {
+      var token, match, ignore = tokens[''], substring = string, tree = [], stack = [], state = items[0], i = 0;
       
       while (state) {
-        if (!Object.keys(state.transitions).some(function(symbol) {
-          if (program.substr(i, symbol.length) != symbol || !symbol && i < program.length-1) return;
-          stack.push(state);
-          tree.push(symbol);
-          state = state.transitions[symbol];
-          return i += symbol.length;
-        }) && !Object.keys(state.reductions).some(function(symbol) {
-          if (program.substr(i, symbol.length) != symbol || !symbol && i < program.length-1) return;
-          //console.log('reduce '+production(state.reductions[symbol])+' on symbol "'+symbol+'"');
-          var symbols = [],
-              reduction = state.reductions[symbol];
+        //console.log('now at:\n'+state.state.map(production).join('\n'));
+        
+        token = undefined;
+        
+        if (ignore && (match = ignore.exec(substring))) {
+          substring = substring.substr(match[0].length);
+          i += match[0].length;
+          continue;
+        }
+        
+        (function(process) {
+          Object.keys(state.transitions).forEach(process(false));
+          Object.keys(state.reductions).forEach(process(true));
+        })(function(reduce) {
+          return function(symbol) {
+            //console.log('checking symbol '+symbol);
+            if (tokens.hasOwnProperty(symbol)) {
+              // TODO: anchor each token regex to the beginning of substring
+              // (or eliminate substring if possible to match starting at index i of program)
+              if ((match = tokens[symbol].exec(substring)) && (!token || match[0].length > token.value.length))
+                token = {symbol: symbol, value: match[0], reduce: reduce};
+            } else if (substring.substr(0, symbol.length) == symbol && (!token || symbol.length > token.value.length) && (symbol || i == string.length)) {
+              token = {symbol: symbol, value: symbol, reduce: reduce};
+            }
+          };
+        });
+        
+        if (!token) throw 'unidentified token at index '+i;
+        
+        if (token.reduce) {
+          var values = [],
+              reduction = state.reductions[token.symbol];
           reduction[1].forEach(function() {
             state = stack.pop();
-            symbols.unshift(tree.pop());
+            values.unshift(tree.pop());
           });
           stack.push(state);
           state = state.transitions[reduction[0]];
-          return tree.push(reduction[3](symbols));
-        })) throw 'unidentified token at index '+i;
+          tree.push(reduction[3](values));
+        } else {
+          stack.push(state);
+          tree.push(token.value);
+          state = state.transitions[token.symbol];
+          substring = substring.substr(token.value.length);
+          i += token.value.length;
+        }
+        
+        //console.log('matched symbol '+token.symbol+' with "'+token.value+'"\n'+(token.reduce ? 'reduced' : 'shifted')+'\nremaining: "'+substring+'"');
       }
       
-      return tree.pop();
+      return tree.pop().pop();
     };
   };
 });
