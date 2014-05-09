@@ -199,7 +199,7 @@ kernel.add('jscc', function() {
         })(function(reduce) {
           return function(symbol) {
             //console.log('checking symbol '+symbol);
-            if (tokens.hasOwnProperty(symbol)) {
+            if (symbol && tokens.hasOwnProperty(symbol)) {
               // TODO: anchor each token regex to the beginning of substring
               // (or eliminate substring if possible to match starting at index i of program)
               if ((match = tokens[symbol].exec(substring)) && (!token || match[0].length > token.value.length))
