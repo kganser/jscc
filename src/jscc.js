@@ -210,7 +210,18 @@ kernel.add('jscc', function() {
           };
         });
         
-        if (!token) throw 'unidentified token at index '+i;
+        if (!token) {
+          var before = string.substr(0, i),
+              newlines = before.match(/\n/g),
+              lastNewline = before.lastIndexOf('\n') + 1;
+          throw {
+            message: 'Unidentified token',
+            index: i,
+            line: string.substring(lastNewline, (string+'\n').indexOf('\n', lastNewline)),
+            row: newlines ? newlines.length+1 : 1,
+            column: i - lastNewline
+          };
+        }
         
         if (token.reduce) {
           var values = [],
