@@ -1,11 +1,15 @@
 kernel.add('jscc', function() {
   return function(grammar, start, tokens) {
-    // TODO: check for misplaced epsilons, missing start symbol, collision with augmented start symbol, etc.
-    // TODO: raise errors when terminals are prefixes of one another
+    
+    if (!grammar.hasOwnProperty(start)) throw 'Start symbol does not appear in grammar';
+    var s = start+"'"; while (grammar.hasOwnProperty(s)) s += "'";
+    grammar[s] = [[[start], function(e) { return e; }]];
+    start = s;
     
     if (!tokens) tokens = {};
-    grammar[start+"'"] = [[[start], function(e) { return e; }]];
-    start = start+"'";
+    Object.keys(tokens).forEach(function(token) {
+      tokens[token] = new RegExp(tokens[token].source.replace(/^\^?/, '^'), tokens[token].ignoreCase ? 'i' : '');
+    });
     
     var terminals = {}, nonterminals = Object.keys(grammar),
         firsts = {}, follows = {}, items = [],
@@ -25,7 +29,9 @@ kernel.add('jscc', function() {
     };
     
     eachProduction(function(n, production) {
-      production.forEach(function(symbol) {
+      production.forEach(function(symbol, i) {
+        if (!symbol) // empty strings are reserved as EOF token
+          return production.splice(i, 1);
         if (!grammar.hasOwnProperty(symbol))
           terminals[symbol] = 1;
       });
@@ -168,11 +174,11 @@ kernel.add('jscc', function() {
       item.state.forEach(function(i) {
         var next = i[1][i[2]];
         if (next) {
-          if (item.reductions.hasOwnProperty(next)) throw 'shift-reduce conflict between productions on input "'+next+'"\n  '+production(i)+' (shift)\n  '+production(item.transitions[next])+' (reduce)';
+          if (item.reductions.hasOwnProperty(next)) throw 'Shift-reduce conflict between productions on input "'+next+'"\n  '+production(i)+' (shift)\n  '+production(item.transitions[next])+' (reduce)';
         } else {
           Object.keys(follows[i[0]]).forEach(function(next) {
-            if (item.transitions.hasOwnProperty(next)) throw 'shift-reduce conflict between productions on input "'+next+'"\n  '+production(item.transitions[next])+' (shift)\n  '+production(i)+' (reduce)';
-            if (item.reductions.hasOwnProperty(next)) throw 'reduce-reduce conflict between productions on input "'+next+'"\n  '+production(item.reductions[next])+'\n  '+production(i);
+            if (item.transitions.hasOwnProperty(next)) throw 'Shift-reduce conflict between productions on input "'+next+'"\n  '+production(item.transitions[next])+' (shift)\n  '+production(i)+' (reduce)';
+            if (item.reductions.hasOwnProperty(next)) throw 'Reduce-reduce conflict between productions on input "'+next+'"\n  '+production(item.reductions[next])+'\n  '+production(i);
             item.reductions[next] = i;
           });
         }
@@ -215,7 +221,7 @@ kernel.add('jscc', function() {
               newlines = before.match(/\n/g),
               lastNewline = before.lastIndexOf('\n') + 1;
           throw {
-            message: 'Unidentified token',
+            message: i == string.length ? 'Unexpected end of input' : 'Unexpected token',
             index: i,
             line: string.substring(lastNewline, (string+'\n').indexOf('\n', lastNewline)),
             row: newlines ? newlines.length+1 : 1,
