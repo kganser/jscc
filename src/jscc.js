@@ -1,3 +1,7 @@
+// Copyright 2014, Klaus Ganser <http://kganser.com>
+// MIT Licensed, with this copyright and permission notice
+// <http://opensource.org/licenses/MIT>
+
 kernel.add('jscc', function() {
   return function(grammar, start, tokens) {
     
@@ -12,8 +16,7 @@ kernel.add('jscc', function() {
     });
     
     var terminals = {}, nonterminals = Object.keys(grammar),
-        firsts = {}, follows = {}, items = [],
-        done;
+        firsts = {}, follows = {}, items = [], done;
 
     // utility functions
     var production = function(i) {
@@ -174,10 +177,10 @@ kernel.add('jscc', function() {
       item.state.forEach(function(i) {
         var next = i[1][i[2]];
         if (next) {
-          if (item.reductions.hasOwnProperty(next)) throw 'Shift-reduce conflict between productions on input "'+next+'"\n  '+production(i)+' (shift)\n  '+production(item.transitions[next])+' (reduce)';
+          if (item.reductions.hasOwnProperty(next)) throw 'Shift-reduce conflict between productions on input "'+next+'"\n  '+production(i)+' (shift)\n  '+production(item.reductions[next])+' (reduce)';
         } else {
           Object.keys(follows[i[0]]).forEach(function(next) {
-            if (item.transitions.hasOwnProperty(next)) throw 'Shift-reduce conflict between productions on input "'+next+'"\n  '+production(item.transitions[next])+' (shift)\n  '+production(i)+' (reduce)';
+            if (item.transitions.hasOwnProperty(next)) throw 'Shift-reduce conflict between productions on input "'+next+'"\n  '+production(item.transitions[next].state[0])+' (shift)\n  '+production(i)+' (reduce)';
             if (item.reductions.hasOwnProperty(next)) throw 'Reduce-reduce conflict between productions on input "'+next+'"\n  '+production(item.reductions[next])+'\n  '+production(i);
             item.reductions[next] = i;
           });
@@ -206,8 +209,6 @@ kernel.add('jscc', function() {
           return function(symbol) {
             //console.log('checking symbol '+symbol);
             if (symbol && tokens.hasOwnProperty(symbol)) {
-              // TODO: anchor each token regex to the beginning of substring
-              // (or eliminate substring if possible to match starting at index i of program)
               if ((match = tokens[symbol].exec(substring)) && (!token || match[0].length > token.value.length))
                 token = {symbol: symbol, value: match[0], reduce: reduce};
             } else if (substring.substr(0, symbol.length) == symbol && (!token || symbol.length > token.value.length) && (symbol || i == string.length)) {
