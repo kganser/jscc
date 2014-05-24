@@ -238,7 +238,7 @@ kernel.add('jscc', function() {
           var before = string.substr(0, i),
               newlines = before.match(/\n/g),
               lastNewline = before.lastIndexOf('\n') + 1;
-          throw 'error' || {
+          throw {
             message: i == string.length ? 'Unexpected end of input' : 'Unexpected token',
             index: i,
             line: string.substring(lastNewline, (string+'\n').indexOf('\n', lastNewline)),
