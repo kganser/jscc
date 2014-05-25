@@ -217,9 +217,7 @@ kernel.add('jscc', function() {
           var next = item[1][item[2]];
           if (!next) {
             Object.keys(item[3]).forEach(function(next) {
-              if (state.transitions.hasOwnProperty(next)) {
-                console.log(Object.keys(state.transitions[next].items[0][3]), Object.keys(item[3]));
-                throw 'Shift-reduce conflict on input "'+next+'"\n  '+stringify(state.transitions[next].items[0])+' (shift)\n  '+stringify(item)+' (reduce)'; }
+              if (state.transitions.hasOwnProperty(next)) throw 'Shift-reduce conflict on input "'+next+'"\n  '+stringify(state.transitions[next].items[0])+' (shift)\n  '+stringify(item)+' (reduce)';
               if (state.reductions.hasOwnProperty(next)) throw 'Reduce-reduce conflict on input "'+next+'"\n  '+stringify(state.reductions[next])+'\n  '+stringify(item);
               state.reductions[next] = item;
             });
