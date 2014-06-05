@@ -6,15 +6,43 @@ kernel.add('jscc', function() {
   return function(grammar, start, tokens) {
   
     var symbols = {}, states = [];
+    
+    Object.keys(tokens = tokens || {}).forEach(function(token) {
+      tokens[token] = new RegExp(tokens[token].source.replace(/^\^?/, '^'), tokens[token].ignoreCase ? 'i' : '');
+    });
+    
+    // utility functions
+    var identity = function(o) { return o; };
+    
+    var unique = function(symbol, obj) {
+      while (symbols.hasOwnProperty(symbol)) symbol += "'";
+      if (obj) obj[symbol] = 1;
+      return obj || symbol;
+    };
+    
+    var merge = function(to, from) {
+      var added;
+      Object.keys(from).forEach(function(key) {
+        if (!to.hasOwnProperty(key))
+          added = to[key] = 1;
+      });
+      return added;
+    };
+    
+    var stringify = function(item) {
+      return item[0]+' → '+item[1].map(function(symbol, i) {
+        return i != item[2] ? i ? ' '+symbol : symbol : '•'+symbol;
+      }).join('')+(item[2] == item[1].length ? '•' : '');
+    };
   
     if (Array.isArray(start)) {
     
       start[0].forEach(function(symbol) { symbols[symbol] = 1; });
       (states = start.slice(1).map(function(state) {
-        return {transitions: {}, reductions: {}, state: state};
+        return {transitions: {}, reductions: {}, raw: state};
       })).forEach(function(state, i) {
-        var t = Array.isArray(state.state) ? state.state[0] : state.state,
-            r = Array.isArray(state.state) ? state.state[1] : {};
+        var t = Array.isArray(state.raw) ? state.raw[0] : state.raw,
+            r = Array.isArray(state.raw) ? state.raw[1] : {};
         Object.keys(t).forEach(function(symbol) {
           state.transitions[start[0][symbol-1]] = states[t[symbol]];
         });
@@ -22,36 +50,14 @@ kernel.add('jscc', function() {
           var value = r[symbol],
               nonterminal = start[0][Array.isArray(value) ? value[0]-1 : value-1],
               production = nonterminal ? grammar[nonterminal][Array.isArray(value) ? value[1] : 0] : [[Object.keys(states[0].transitions)[0]], function(e) { return e; }];
-          state.reductions[+symbol ? start[0][symbol-1] : ''] = [nonterminal, production[0], null, null, production[1]];
+          state.reductions[+symbol ? start[0][symbol-1] : ''] = [nonterminal, production[0], null, null, production[1] || identity];
         });
-        delete state.state;
+        delete state.raw;
       });
     
     } else {
     
       var nonterminals = Object.keys(grammar), firsts = {}, oldStart = start, done;
-
-      // utility functions
-      var unique = function(symbol, obj) {
-        while (symbols.hasOwnProperty(symbol)) symbol += "'";
-        if (obj) obj[symbol] = 1;
-        return obj || symbol;
-      };
-      
-      var merge = function(to, from) {
-        var added;
-        Object.keys(from).forEach(function(key) {
-          if (!to.hasOwnProperty(key))
-            added = to[key] = 1;
-        });
-        return added;
-      };
-      
-      var stringify = function(item) {
-        return item[0]+' → '+item[1].map(function(symbol, i) {
-          return i != item[2] ? i ? ' '+symbol : symbol : '•'+symbol;
-        }).join('')+(item[2] == item[1].length ? '•' : '');
-      };
       
       var getFirsts = function(production, start) {
         var symbol, current = {'': 1};
@@ -83,10 +89,6 @@ kernel.add('jscc', function() {
       
       if (!grammar.hasOwnProperty(oldStart)) throw 'Start symbol does not appear in grammar';
       grammar[start = unique(oldStart)] = [[[oldStart], function(e) { return e; }]];
-      
-      Object.keys(tokens = tokens || {}).forEach(function(token) {
-        tokens[token] = new RegExp(tokens[token].source.replace(/^\^?/, '^'), tokens[token].ignoreCase ? 'i' : '');
-      });
       
       // compute first sets
       do {
@@ -125,7 +127,7 @@ kernel.add('jscc', function() {
                 if (merge(last[3], lookaheads))
                   done = false;
               } else {
-                state.items.push([next, production[0], 0, lookaheads, production[1]]);
+                state.items.push([next, production[0], 0, lookaheads, production[1] || identity]);
                 done = false;
               }
             });
@@ -135,7 +137,7 @@ kernel.add('jscc', function() {
       };
       
       // generate LR(0) states
-      states.push(close({items: [[start, grammar[start][0][0], 0, {}, grammar[start][0][1]]]}));
+      states.push(close({items: [[start, grammar[start][0][0], 0, {}, grammar[start][0][1] || identity]]}));
       
       do {
         done = true;
@@ -287,7 +289,7 @@ kernel.add('jscc', function() {
             message: i == string.length ? 'Unexpected end of input' : 'Unexpected token',
             index: i,
             line: string.substring(lastNewline, (string+'\n').indexOf('\n', lastNewline)),
-            row: newlines ? newlines.length+1 : 1,
+            row: newlines ? newlines.length : 0,
             column: i - lastNewline,
             toString: function() {
               return [this.message, this.line, new Array(this.column+1).join(' ')+'^'].join('\n');
@@ -298,6 +300,7 @@ kernel.add('jscc', function() {
         if (token.reduce) {
           var args = [],
               reduction = state.reductions[token.symbol];
+          //console.log('reducing '+stringify(reduction));
           for (var j = reduction[1].length; j; j--) {
             state = stack.pop();
             args.unshift(values.pop());
@@ -306,14 +309,13 @@ kernel.add('jscc', function() {
           state = state.transitions[reduction[0]];
           values.push(reduction[4](args));
         } else {
+          //console.log('shifting '+token.symbol);
           stack.push(state);
           values.push(token.value);
           state = state.transitions[token.symbol];
           substring = substring.substr(token.value.length);
           i += token.value.length;
         }
-        
-        //console.log('matched symbol '+token.symbol+' with "'+token.value+'"\n'+(token.reduce ? 'reduced' : 'shifted')+'\nremaining: "'+substring+'"');
       }
       
       return values.pop().pop();
