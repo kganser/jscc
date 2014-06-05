@@ -13,9 +13,9 @@
       kernel.use({jscc: 0}, function($) {
         var tests = document.getElementById('tests'),
             result = document.getElementById('result'),
-            pass = 0;
+            fails = 14;
         var assert = function(result, description) {
-          if (result) pass++;
+          if (result) fails--;
           tests.innerHTML += (result ? '✓' : '✗')+' '+description+'\n';
         };
         var grammar = {
@@ -128,8 +128,8 @@
         } catch (e) {
           assert(!e.indexOf('Reduce-reduce conflict'), 'Reduce-reduce error detection');
         }
-        result.style.color = pass == 14 ? 'green' : 'red';
-        result.innerHTML = pass == 14 ? '✓ 14/14 Tests passed' : '✗ '+(14-pass)+'/14 Tests failed or skipped';
+        result.style.color = fails ? 'red' : 'green';
+        result.innerHTML = fails ? '✗ '+fails+' Tests failed or skipped' : '✓ All tests passed';
       });
     </script>
   </body>
