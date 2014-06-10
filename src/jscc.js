@@ -8,7 +8,7 @@ kernel.add('jscc', function() {
     var symbols = {}, states = [];
     
     Object.keys(tokens = tokens || {}).forEach(function(token) {
-      tokens[token] = new RegExp(tokens[token].source.replace(/^\^?/, '^'), tokens[token].ignoreCase ? 'i' : '');
+      tokens[token] = new RegExp(tokens[token].source.replace(/^\^?/, '^(?:')+')', tokens[token].ignoreCase ? 'i' : '');
     });
     
     // utility functions
@@ -292,7 +292,7 @@ kernel.add('jscc', function() {
             row: newlines ? newlines.length : 0,
             column: i - lastNewline,
             toString: function() {
-              return [this.message, this.line, new Array(this.column+1).join(' ')+'^'].join('\n');
+              return [this.message, this.line.replace(/\t/g, ' '), new Array(this.column+1).join(' ')+'^'].join('\n');
             }
           };
         }
