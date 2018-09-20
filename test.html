@@ -1,0 +1,134 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+  </head>
+  <body>
+    <pre id="result"></pre>
+    <pre id="tests"></pre>
+    <script src="jscc.js"></script>
+    <script>
+      (function() {
+        var tests = document.getElementById('tests'),
+            result = document.getElementById('result'),
+            fails = 14;
+        var assert = function(result, description) {
+          if (result) fails--;
+          tests.innerHTML += (result ? '✓' : '✗')+' '+description+'\n';
+        };
+        var grammar = {
+          addition: [
+            'addition', '+', 'multiplication', function(e) { return e[0] + e[2]; },
+            'addition', '-', 'multiplication', function(e) { return e[0] - e[2]; },
+            'multiplication', function(e) { return e[0]; }
+          ],
+          multiplication: [
+            'multiplication', '*', 'group', function(e) { return e[0] * e[2]; },
+            'multiplication', '/', 'group', function(e) { return e[0] / e[2]; },
+            'group', function(e) { return e[0]; }
+          ],
+          group: [
+            '(', 'addition', ')', function(e) { return e[1]; },
+            'number', function(e) { return parseInt(e[0], 10); }
+          ]
+        };
+        var tokens = {
+          number: /[0-9]+/,
+          '': /\s+/
+        };
+        try {
+          var parse = jscc.generate(grammar, 'addition', tokens);
+          assert(true, 'Compile valid SLR grammar');
+          try {
+            assert(parse('(1 + 2) * 3 / 4 - 5') === -2.75, 'Parse valid SLR input');
+          } catch (e) {
+            assert(false, 'Parse valid SLR input');
+          }
+          try {
+            parse('');
+            assert(false, 'Error on truncated input');
+          } catch (e) {
+            assert(true, 'Error on truncated input');
+            assert(e && e.message === 'Unexpected end of input' && e.line === '' && e.row === 0 && e.column === 0, 'End of input error');
+          }
+          try {
+            parse('\n5 +\n4 + 5 && 6\n');
+            assert(false, 'Error on invalid input');
+          } catch (e) {
+            assert(true, 'Error on invalid input');
+            assert(e && e.message === 'Unexpected token' && e.line === '4 + 5 && 6' && e.row === 2 && e.column === 6, 'Unexpected token error');
+          }
+          try {
+            parse = JSON.parse(JSON.stringify(parse()));
+            assert(true, 'Serialize state machine representation');
+            try {
+              parse = jscc.generate(grammar, parse, tokens);
+              assert(true, 'Deserialize state machine representation');
+              try {
+                assert(parse('(1 + 2) * 3 / 4 - 5') === -2.75, 'Parse valid input after deserialization');
+              } catch (e) {
+                assert(false, 'Parse valid input after deserialization');
+              }
+            } catch (e) {
+              assert(false, 'Deserialize state machine representation');
+            }
+          } catch (e) {
+            assert(false, 'Serialize state machine representation');
+          }
+        } catch (e) {
+          assert(false, 'Compile valid SLR grammar');
+        }
+        try {
+          var parse = jscc.generate({
+            S: [
+              'L', '=', 'R', 0,
+              'R', 0
+            ],
+            L: [
+              '*', 'R', 0,
+              'id', 0
+            ],
+            R: [
+              'L', 0
+            ]
+          }, 'S');
+          assert(true, 'Compile valid LALR grammar');
+          try {
+            parse('**id=id');
+            assert(true, 'Parse valid LALR input');
+          } catch (e) {
+            assert(false, 'Parse valid LALR input');
+          }
+        } catch (e) {
+          assert(false, 'Compile valid LALR grammar');
+        }
+        try {
+          jscc.generate({
+            S: [
+              'A', 'S', 0,
+              'b', 0
+            ],
+            A: [
+              'S', 'A', 0,
+              'a', 0
+            ]
+          }, 'S');
+          assert(false, 'Error compiling non-LALR grammar');
+        } catch (e) {
+          assert(true, 'Error compiling non-LALR grammar');
+          assert(!e.indexOf('Shift-reduce conflict'), 'Shift-reduce error detection');
+        }
+        try {
+          jscc.generate({
+            S: ['A', 0, 'A', 0]
+          }, 'S');
+          assert(false, 'Reduce-reduce error detection');
+        } catch (e) {
+          assert(!e.indexOf('Reduce-reduce conflict'), 'Reduce-reduce error detection');
+        }
+        result.style.color = fails ? 'red' : 'green';
+        result.innerHTML = fails ? '✗ '+fails+' Tests failed or skipped' : '✓ All tests passed';
+      }());
+    </script>
+  </body>
+</html>

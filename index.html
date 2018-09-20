@@ -1,0 +1,119 @@
+<!doctype html>
+<html>
+  <head>
+    <title>jscc</title>
+    <meta charset="utf-8">
+    <meta name="description" content="A simple parser generator written in javascript.">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <link rel="canonical" href="https://jscc.kganser.com">
+    <link rel="stylesheet" href="//kganser.com/css/common.css">
+    <link rel="stylesheet" href="//kganser.com/css/prettify.css">
+  </head>
+  <body>
+    <a href="//kganser.com">kganser.com</a>
+    <h1>jscc</h1>
+    <p>Jscc is a simple parser generator written in javascript. It allows you to generate an <a href="https://en.wikipedia.org/wiki/LALR_parser">LALR parser</a> for a language you define using a context-free grammar specification.  This grammar is given as a pure javascript data structure as follows:</p>
+    <pre class="prettyprint">
+{
+  <em>nonterminal</em>: [
+    <em>symbol</em>, ... , function(values) { /* <em>reduce</em> */ },
+    ...
+  ],
+  ...
+}</pre>
+    <p>This grammar (similar to BNF) is an object with <em>nonterminal</em> symbols as keys. Its values are sequences of nonempty <em>symbol</em> strings (terminal or nonterminal) to which <em>nonterminal</em> can expand, followed by a reduce function that is called when reducing the immediately preceding string sequence (i.e. the production) with an array of values corresponding to the symbols in the production. The reduce function should return a new value representing <em>nonterminal</em> for this production.</p>
+    <p>Any string in the grammar not appearing as a key in the grammar object is interpreted literally as a terminal symbol.  Jscc also accepts a <code>tokens</code> object mapping terminal symbols to regular expressions that serves as a built-in lexer.</p>
+    <pre class="prettyprint">jscc.generate(grammar, start, tokens);</pre>
+    <p>A call to <code>generate</code> specifies the language's <code>grammar</code>, the <code>start</code> symbol for the grammar, and an optional <code>tokens</code> object.  The call returns a function that parses a given string, calling the associated reduce functions on any reduction steps.  When called without an argument, this function returns a compact, JSON-serializable representation of the state machine generated for the grammar, which can be supplied in place of <code>start</code> to <code>generate</code> (along with the same <code>grammar</code>) to quickly generate the same parser function.</p>
+    <pre class="prettyprint">
+var machine = jscc.generate(grammar, start)(); // JSON-serializable; suitable for hard-coding
+jscc.generate(grammar, machine, tokens);</pre>
+    <p>Use <a href="https://kganser.com/json2js">json2js</a> for a compact representation of <code>machine</code> to copy into your code.</p>
+    <h2>Example</h2>
+    <p>Below is a call to <code>generate</code> that creates a parser for a simple calculator.</p>
+    <pre class="prettyprint">
+var calculate = jscc.generate({
+  addition: [
+    'addition', '+', 'multiplication', function(e) { return e[0] + e[2]; },
+    'addition', '-', 'multiplication', function(e) { return e[0] - e[2]; },
+    'multiplication', function(e) { return e[0]; }
+  ],
+  multiplication: [
+    'multiplication', '*', 'group', function(e) { return e[0] * e[2]; },
+    'multiplication', '/', 'group', function(e) { return e[0] / e[2]; },
+    'group', function(e) { return e[0]; }
+  ],
+  group: [
+    '(', 'addition', ')', function(e) { return e[1]; },
+    'number', function(e) { return parseInt(e[0], 10); }
+  ]
+}, 'addition', {
+  number: /[0-9]+/,
+  '': /\s+/ // empty string token denotes characters to ignore
+});</pre>
+    <p>You can try the calculator below.  The result will appear beside the button, and the parse tree will appear below.</p>
+    <input id="expression" type="text" value="(1 + 2) * 3 / 4 - 5">
+    <button id="calculate">=</button>
+    <span id="result"></span>
+    <pre id="tree" style="min-height: 400px"></pre>
+    <a class="git-banner" href="https://github.com/kganser/jscc"></a>
+    <script src="//kganser.com/js/common.js"></script>
+    <script src="//kganser.com/js/prettify.js"></script>
+    <script src="jscc.js"></script>
+    <script>
+      (function() {
+        var calculate = (function(grammar, start, tokens) {
+          var augmented = {};
+          Object.keys(grammar).forEach(function(symbol) {
+            augmented[symbol] = grammar[symbol].map(function(item) {
+              return typeof item != 'function' ? item : function(e) {
+                return {
+                  tree: [symbol].concat(e),
+                  value: item(e.map(function(e) {
+                    return typeof e == 'object' ? e.value : e;
+                  }))
+                };
+              };
+            });
+          });
+          return jscc.generate(augmented, start, tokens);
+        })({
+          addition: [
+            'addition', '+', 'multiplication', function(e) { return e[0] + e[2]; },
+            'addition', '-', 'multiplication', function(e) { return e[0] - e[2]; },
+            'multiplication', function(e) { return e[0]; }
+          ],
+          multiplication: [
+            'multiplication', '*', 'group', function(e) { return e[0] * e[2]; },
+            'multiplication', '/', 'group', function(e) { return e[0] / e[2]; },
+            'group', function(e) { return e[0]; }
+          ],
+          group: [
+            '(', 'addition', ')', function(e) { return e[1]; },
+            'number', function(e) { return parseInt(e[0], 10); }
+          ]
+        }, 'addition', {
+          number: /[0-9]+/,
+          '': /\s+/
+        });
+        
+        $('calculate').onclick = function() {
+          try {
+            var value = calculate($('expression').value);
+          } catch (e) {
+            var value = {value: '', tree: [e.toString()]};
+          }
+          $('result').innerHTML = value.value;
+          $('tree').innerHTML = (function print(branch, indent, last) {
+            var n = last != undefined ? last ? ['└', ' '] : ['├', '│'] : ['', ''];
+            if (typeof branch == 'string')
+              return indent+n[0]+'"'+branch+'"\n';
+            return indent+n[0]+branch.tree[0]+'\n'+branch.tree.slice(1).map(function(i, j, k) {
+              return print(i, indent+(n[1]), j == k.length-1);
+            }).join('');
+          })(value, '');
+        };
+      }());
+    </script>
+  </body>
+</html>
